@@ -26,6 +26,27 @@ class MainActivity:FlutterActivity() {
     private val companion by lazy { getSystemService(CompanionDeviceManager::class.java) }
     override fun configureFlutterEngine(flutterEngine:FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "astra/updates")
+            .setMethodCallHandler { call, result ->
+                when (call.method) {
+                    "installedBuild" -> result.success(packageManager.getPackageInfo(packageName, 0).longVersionCode)
+                    "openRelease" -> {
+                        val tag = call.arguments as? String
+                        if (tag == null || !Regex("v[0-9]+\\.[0-9]+\\.[0-9]+\\+[0-9]+").matches(tag)) {
+                            result.error("invalid_release", "Versione non valida", null)
+                        } else {
+                            val url = Uri.parse("https://github.com/lohacker10/dpf_astra/releases/tag/$tag")
+                            try {
+                                startActivity(Intent(Intent.ACTION_VIEW, url))
+                                result.success(true)
+                            } catch (_: ActivityNotFoundException) {
+                                result.success(false)
+                            }
+                        }
+                    }
+                    else -> result.notImplemented()
+                }
+            }
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger,"astra/control").setMethodCallHandler { call,result->
             try { when(call.method) {
                 "devices"->{

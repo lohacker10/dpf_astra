@@ -1,7 +1,7 @@
 name: astra_dpf_monitor
 description: Monitor locale del filtro antiparticolato Opel Astra K.
 publish_to: none
-version: 0.1.0+1
+version: 0.2.0+1
 environment:
   sdk: ^3.11.1
 dependencies:

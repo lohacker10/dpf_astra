@@ -2,28 +2,39 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'monitor.dart';
 import 'settings.dart';
+import 'updates.dart';
 
 void main() => runApp(const AstraApp());
 
+const appName = 'DPF Astra';
+
 class AstraApp extends StatelessWidget {
-  const AstraApp({super.key});
+  const AstraApp({super.key, this.checkForUpdate = fetchUpdate});
+
+  final Future<ReleaseUpdate?> Function() checkForUpdate;
+
+  ThemeData _theme(Brightness brightness) => ThemeData(
+    colorScheme: ColorScheme.fromSeed(
+      seedColor: const Color(0xff34765c),
+      brightness: brightness,
+    ),
+  );
 
   @override
   Widget build(BuildContext context) => MaterialApp(
-    title: 'Astra DPF Monitor',
+    title: appName,
     debugShowCheckedModeBanner: false,
-    theme: ThemeData(
-      useMaterial3: true,
-      colorScheme: ColorScheme.fromSeed(seedColor: const Color(0xff34765c)),
-      scaffoldBackgroundColor: const Color(0xfff7f8f6),
-      appBarTheme: const AppBarTheme(backgroundColor: Color(0xfff7f8f6)),
-    ),
-    home: const MonitorPage(),
+    theme: _theme(Brightness.light),
+    darkTheme: _theme(Brightness.dark),
+    themeMode: ThemeMode.system,
+    home: MonitorPage(checkForUpdate: checkForUpdate),
   );
 }
 
 class MonitorPage extends StatefulWidget {
-  const MonitorPage({super.key});
+  const MonitorPage({super.key, required this.checkForUpdate});
+
+  final Future<ReleaseUpdate?> Function() checkForUpdate;
 
   @override
   State<MonitorPage> createState() => _MonitorPageState();
@@ -36,6 +47,9 @@ class _MonitorPageState extends State<MonitorPage> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) unawaited(_offerUpdate());
+    });
     subscription = events.receiveBroadcastStream().listen(
       (event) {
         if (mounted) setState(() => reading = MonitorReading.fromEvent(event));
@@ -46,6 +60,40 @@ class _MonitorPageState extends State<MonitorPage> {
     );
   }
 
+  Future<void> _offerUpdate() async {
+    final update = await widget.checkForUpdate();
+    if (!mounted || update == null) return;
+
+    final openRelease = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        scrollable: true,
+        title: const Text('Aggiornamento disponibile'),
+        content: Text(
+          '$appName ${update.version} (build ${update.build}) è disponibile. Apri GitHub per '
+          'scaricare dpf-astra.apk e installare l’aggiornamento.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Più tardi'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Apri GitHub'),
+          ),
+        ],
+      ),
+    );
+
+    if (!mounted || openRelease != true) return;
+    if (!await update.open() && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Impossibile aprire GitHub.')),
+      );
+    }
+  }
+
   @override
   void dispose() {
     subscription?.cancel();
@@ -54,11 +102,14 @@ class _MonitorPageState extends State<MonitorPage> {
 
   @override
   Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
     final color = reading.active
-        ? const Color(0xffa45d00)
+        ? scheme.brightness == Brightness.dark
+              ? const Color(0xffffbd6d)
+              : const Color(0xff925300)
         : reading.inactive
-        ? const Color(0xff28734e)
-        : const Color(0xff68716c);
+        ? scheme.primary
+        : scheme.onSurfaceVariant;
     final saturation = reading.saturation;
     final status = !reading.connected
         ? 'Non connesso'
@@ -72,7 +123,7 @@ class _MonitorPageState extends State<MonitorPage> {
     return Scaffold(
       appBar: AppBar(
         title: const Text(
-          'Astra DPF',
+          appName,
           style: TextStyle(fontWeight: FontWeight.w600),
         ),
         actions: [
@@ -126,7 +177,7 @@ class _MonitorPageState extends State<MonitorPage> {
                                     ? 0
                                     : saturation / 100,
                                 strokeWidth: 10,
-                                backgroundColor: const Color(0xffe2e7e2),
+                                backgroundColor: scheme.surfaceContainerHighest,
                                 color: color,
                               ),
                             ),

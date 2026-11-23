@@ -1,5 +1,7 @@
 import 'package:astra_dpf_monitor/main.dart';
 import 'package:astra_dpf_monitor/monitor.dart';
+import 'package:astra_dpf_monitor/updates.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -39,6 +41,48 @@ void main() {
     );
     await tester.pump();
   }
+
+  testWidgets('follows light and dark system appearance', (tester) async {
+    final dispatcher = tester.platformDispatcher;
+    dispatcher.platformBrightnessTestValue = Brightness.light;
+    addTearDown(dispatcher.clearPlatformBrightnessTestValue);
+    await tester.pumpWidget(const AstraApp());
+    final appBar = tester.element(find.byType(AppBar));
+    expect(Theme.of(appBar).brightness, Brightness.light);
+
+    dispatcher.platformBrightnessTestValue = Brightness.dark;
+    await tester.pumpAndSettle();
+    expect(Theme.of(appBar).brightness, Brightness.dark);
+  });
+
+  testWidgets('startup update prompt opens the offered GitHub release', (
+    tester,
+  ) async {
+    const channel = MethodChannel('astra/updates');
+    final update = ReleaseUpdate.fromGitHub({
+      'tag_name': 'v0.2.0+5',
+      'draft': false,
+      'prerelease': false,
+      'assets': [
+        {'name': 'dpf-astra.apk', 'state': 'uploaded'},
+      ],
+    }, 4);
+    messenger.setMockMethodCallHandler(channel, (call) async {
+      calls.add(call);
+      return true;
+    });
+    addTearDown(() => messenger.setMockMethodCallHandler(channel, null));
+
+    await tester.pumpWidget(AstraApp(checkForUpdate: () async => update));
+    await tester.pumpAndSettle();
+    expect(find.text('Aggiornamento disponibile'), findsOneWidget);
+    expect(find.textContaining('0.2.0 (build 5)'), findsOneWidget);
+    await tester.tap(find.text('Apri GitHub'));
+    await tester.pumpAndSettle();
+    expect(calls.last.method, 'openRelease');
+    expect(calls.last.arguments, 'v0.2.0+5');
+    expect(find.text('Aggiornamento disponibile'), findsNothing);
+  });
 
   testWidgets('shows unavailable data until a real reading arrives', (
     tester,

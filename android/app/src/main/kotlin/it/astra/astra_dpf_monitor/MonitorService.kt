@@ -74,7 +74,7 @@ class MonitorService:Service() {
     override fun onStartCommand(intent:Intent?,flags:Int,startId:Int):Int {
         if(!prefs.getBoolean("enabled",false) || prefs.getString("address",null)==null) { stopSelf();return START_NOT_STICKY }
         if(checkSelfPermission(Manifest.permission.BLUETOOTH_CONNECT)!=PackageManager.PERMISSION_GRANTED) { stopSelf();return START_NOT_STICKY }
-        startForeground(1,alerts.ongoing("Astra DPF Monitor","In attesa del Vgate"),ServiceInfo.FOREGROUND_SERVICE_TYPE_CONNECTED_DEVICE)
+        startForeground(1,alerts.ongoing(getString(R.string.app_name),"In attesa del Vgate"),ServiceInfo.FOREGROUND_SERVICE_TYPE_CONNECTED_DEVICE)
         if(!running) { running=true;worker.execute { monitor() } }
         return START_STICKY
     }
@@ -125,14 +125,14 @@ class MonitorService:Service() {
                     val detail=if(ElmProtocol.requests.isEmpty()) "Profilo ECU non verificato: dati DPF non disponibili" else "Profilo B16DT: verifica necessaria sulla tua Astra"
                     publish(reading,true,detail)
                     if(machine.state=="active") alerts.update("Rigenerazione DPF in corso","${saturation(reading)}\n"+if(machine.uncertain) "Inizio non osservato: durata non disponibile" else "Durata trascorsa: ${(System.currentTimeMillis()-machine.activeSince)/60000} min")
-                    else alerts.update("Astra DPF Monitor",if(reading.active==null) "Dati ECU non disponibili" else "Monitoraggio DPF attivo")
+                    else alerts.update(getString(R.string.app_name),if(reading.active==null) "Dati ECU non disponibili" else "Monitoraggio DPF attivo")
                     Thread.sleep(3000)
                 }
             } catch(_:InterruptedException) { break }
             catch(error:Exception) {
                 machine.gap();persist();publish(detail="Connessione assente o risposta non valida",status="disconnected")
                 log.record("connection_or_read_error_${error.javaClass.simpleName}")
-                alerts.update("Astra DPF Monitor","Vgate non disponibile. Riconnessione automatica.")
+                alerts.update(getString(R.string.app_name),"Vgate non disponibile. Riconnessione automatica.")
             } finally {
                 try { transport?.close() } catch(_:Exception) {};transport=null
                 if(lock?.isHeld==true) lock?.release();lock=null
