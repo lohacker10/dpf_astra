@@ -1,16 +1,29 @@
-name: Android MVP
+name: Android CI and release
+
 on:
   push:
+    branches: ['**']
   pull_request:
   workflow_dispatch:
+
 permissions:
   contents: read
+
+defaults:
+  run:
+    shell: bash
+
 jobs:
   verify:
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    outputs:
+      release_tag: ${{ steps.version.outputs.tag }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
@@ -27,8 +40,87 @@ jobs:
       - run: flutter build apk --debug
       - run: ./gradlew testDebugUnitTest lintDebug
         working-directory: android
-      - run: flutter build apk --release --split-per-abi
+
+      - name: Set release version
+        id: version
+        if: github.ref == 'refs/heads/main' && github.repository == 'lohacker10/dpf_astra'
+        run: |
+          version=$(sed -nE 's/^version: ([0-9]+\.[0-9]+\.[0-9]+)\+[0-9]+$/\1/p' pubspec.yaml)
+          test -n "$version"
+          # Retries of the same commit must retain its Android version code.
+          build=$(( $(git rev-list --count --first-parent HEAD) + 1 ))
+          {
+            printf 'version=%s\n' "$version"
+            printf 'build=%s\n' "$build"
+            printf 'tag=v%s+%s\n' "$version" "$build"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Build signed Android APK
+        if: steps.version.outcome == 'success'
+        env:
+          KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          DPF_RELEASE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          VERSION: ${{ steps.version.outputs.version }}
+          BUILD: ${{ steps.version.outputs.build }}
+        run: |
+          if [[ -z "$KEYSTORE_BASE64" || -z "$DPF_RELEASE_PASSWORD" ]]; then
+            echo "::error::Android release signing secrets are missing."
+            exit 1
+          fi
+          umask 077
+          export DPF_RELEASE_KEYSTORE="$RUNNER_TEMP/dpf-astra.p12"
+          trap 'rm -f "$DPF_RELEASE_KEYSTORE"' EXIT
+          printf '%s' "$KEYSTORE_BASE64" | base64 --decode > "$DPF_RELEASE_KEYSTORE"
+          unset KEYSTORE_BASE64
+          flutter build apk --release --build-name "$VERSION" --build-number "$BUILD"
+          cp build/app/outputs/flutter-apk/app-release.apk dpf-astra.apk
+
       - uses: actions/upload-artifact@v4
+        if: steps.version.outcome == 'success'
         with:
-          name: astra-dpf-monitor-test-apks
-          path: build/app/outputs/flutter-apk/*-release.apk
+          name: dpf-astra-apk
+          path: dpf-astra.apk
+          if-no-files-found: error
+          overwrite: true
+
+  publish:
+    needs: verify
+    if: needs.verify.outputs.release_tag != ''
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    concurrency:
+      group: dpf-astra-android-release
+      queue: max
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: dpf-astra-apk
+      - name: Publish APK to GitHub Releases
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          TAG: ${{ needs.verify.outputs.release_tag }}
+        run: |
+          releases=$(gh api --paginate --slurp "repos/$GH_REPO/releases?per_page=100")
+          existing=$(jq -r --arg tag "$TAG" '.[][] | select(.tag_name == $tag) | .draft' <<< "$releases")
+          if [[ "$existing" == false ]]; then
+            exit 0
+          fi
+
+          # Older builds can finish later. Keep the newest build as Latest.
+          latest=$(jq -r --argjson build "${TAG##*+}" '
+            [.[][] | select(.draft == false and .prerelease == false) | .tag_name
+              | capture("^v[0-9]+\\.[0-9]+\\.[0-9]+\\+(?<build>[0-9]+)$") | .build | tonumber]
+            | all(. <= $build)
+          ' <<< "$releases")
+
+          if [[ "$existing" == true ]]; then
+            gh release upload "$TAG" dpf-astra.apk --clobber
+            gh release edit "$TAG" --draft=false --latest="$latest"
+          else
+            gh release create "$TAG" dpf-astra.apk --target "$GITHUB_SHA" \
+              --title "DPF Astra ${TAG#v}" --latest="$latest" \
+              --notes "Android 12 or newer. Download dpf-astra.apk from Assets to install or update. Review the project README and validate readings before relying on them."
+          fi

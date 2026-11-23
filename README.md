@@ -1,90 +1,51 @@
-# Astra DPF Monitor
+# DPF Astra
 
-Monitor Android locale per Opel Astra K 2016 1.6 CDTI 110 CV, con schermata
-Flutter Material 3 e servizio Kotlin indipendente dal processo grafico.
-Niente account, pubblicità, rete, backend o servizi a pagamento.
+<img src="android/app/src/main/res/mipmap-xxxhdpi/ic_launcher.png" width="88" height="88" alt="DPF Astra app icon">
 
-**MVP sperimentale da validare sulla vettura. Non pronto per uso quotidiano.**
-Le conversioni ricavate da DPF Info sono riscontri statici, non misure eseguite
-sulla tua ECU. Il progetto non contiene codice o componenti dell'APK originale.
+An independent Android app for monitoring the diesel particulate filter (DPF) on a supported Opel Astra K using a Bluetooth OBD-II adapter.
 
-## Installazione e prima configurazione
+> [!WARNING]
+> **Built with AI assistance.** Review the code and independently verify the readings and alerts on the vehicle before relying on the app. The ECU profile is experimental and still needs on-vehicle validation. Always follow the vehicle's dashboard warnings and owner's manual.
 
-1. Installare l'APK di test. Richiede Android 12 o successivo.
-2. Da fermi, accendere il Vgate e aprire l'app una volta.
-3. In Impostazioni concedere Bluetooth e notifiche; selezionare il Vgate e il
-   trasporto Classic SPP oppure BLE. Completare il consenso companion Android.
-4. Avviare il monitoraggio e verificare connessione e letture.
-5. Verificare canali notifiche e impostazioni batteria del proprio produttore.
-   Terminata la configurazione il servizio tenta la riconnessione automaticamente.
+## 🚘 Who it's for
 
-Il display principale mostra soltanto saturazione, distanza dall'ultima
-rigenerazione e stato. Nessun dato simulato è utilizzato in produzione.
-I valori assenti restano indisponibili. Le stime di durata sono intenzionalmente
-indisponibili finché non esiste uno storico di completamenti affidabili.
+DPF Astra is intended for owners and testers of the **Opel Astra K 1.6 CDTI 110 PS (B16DT-family ECU)** who want to see when the filter is regenerating. Check your engine and ECU before using it. Other vehicles and engine variants are unverified. DPF Astra is an independent project and has no affiliation with Opel.
 
-La presenza companion e il foreground service `connectedDevice` sono i meccanismi
-supportati per lavorare a schermo spento. L'avvio non è garantito dopo arresto
-forzato, revoca permessi o blocchi del produttore. Un adattatore Classic può non
-annunciare presenza finché non è già connesso: il servizio mantiene quindi i
-propri tentativi di connessione. Vedere [limiti Android](docs/background.md).
+You need **Android 12 or newer** and a **Vgate iCar Pro** Bluetooth OBD-II adapter. Depending on the adapter variant, use Bluetooth Classic (SPP) or Bluetooth Low Energy (BLE). The app interface is currently in Italian.
 
-## Protocollo e sicurezza
+## 📥 Install or update
 
-Consultare [evidenze del reverse engineering](docs/protocol-evidence.md) prima
-di interpretare le letture. Nessuna scansione indiscriminata dei DID.
-Il trasporto accetta soltanto una lista fissa di inizializzazione ELM e richieste
-di lettura DPF. Nessuna cancellazione DTC, codifica, sessione di programmazione,
-security access o comando di rigenerazione forzata.
+1. Open [GitHub Releases](https://github.com/lohacker10/dpf_astra/releases/latest) and download **`dpf-astra.apk`** from **Assets**.
+2. Open the downloaded APK. If Android asks, allow your browser or file manager to install unknown apps, then confirm installation.
+3. Open **DPF Astra** from the app launcher.
 
-Le risposte malformate, negative o incoerenti non diventano zero. Le transizioni
-richiedono letture ripetute; una disconnessione non equivale a completamento.
-Un intervallo offline rende la continuità della rigenerazione sconosciuta.
+The app checks GitHub when it starts. When an update is available, tap **Apri GitHub** in the prompt, download the new APK, and open it in Android's installer. You can update a previous GitHub release in place and keep its settings. If Android reports a conflicting signature from a locally built test version, export any logs you want to keep and uninstall that version before installing the GitHub APK. Uninstalling clears local app data.
 
-## Struttura
+## 🔌 Connect and monitor
 
-- `lib/`: interfaccia Flutter, modello degli eventi e configurazione.
-- `android/app/src/main/kotlin/it/astra/astra_dpf_monitor/`:
-  trasporti SPP/GATT, parser, macchina a stati, servizio, notifiche e bridge.
-- `test/`: test Flutter e dei valori mancanti.
-- `android/app/src/test/`: test JVM, parser e scenari simulati.
-- `docs/`: evidenze, restrizioni e prove sul veicolo.
+1. With the vehicle parked, plug the adapter into the OBD-II port and power it on. Pair a Classic adapter in Android's Bluetooth settings.
+2. Open **Impostazioni** → **Autorizzazioni Android** in DPF Astra. Grant Bluetooth and notification permissions.
+3. Use **Seleziona il Vgate** and choose the transport supported by your adapter. For a BLE adapter that isn't already paired, tap **Cerca Vgate BLE non associato**. Accept the Android companion-device prompt.
+4. Return to the dashboard and verify that the adapter connects and the readings match a trusted diagnostic tool. If monitoring is paused, tap **Avvia monitoraggio** in **Impostazioni**.
 
-La macchina a stati è nativa perché deve funzionare anche senza Flutter aperto;
-Flutter riceve snapshot su EventChannel `astra/events` e invia comandi su
-MethodChannel `astra/control`. Persistenza privata leggera tramite preferenze;
-i log tecnici restano locali e sono esportati solo su richiesta.
+The dashboard shows **DPF saturation**, **distance since the last regeneration**, and **regeneration status**, including elapsed time when the start was observed. Missing readings are marked as unavailable. The app follows Android's light or dark theme.
 
-## Build riproducibile
+The app can send regeneration notifications and monitor with the screen off. Background operation depends on Android permissions, adapter behavior, and the phone's battery settings. See the [background behavior notes](docs/background.md) and the [vehicle validation checklist](docs/vehicle-validation.md).
 
-Toolchain usata: Flutter 3.41.4 / Dart 3.11.1, JDK 17, Android SDK 36.
+## 🔒 What the app reads and shares
+
+The app sends a fixed set of read-only DPF queries. It cannot force regeneration, clear fault codes, or change ECU settings. Monitoring works offline. The startup update check requests public release information from GitHub without sending vehicle readings or diagnostic logs. Optional diagnostic logs stay on the device until you export them.
+
+## 🛠️ Build from source
+
+Use Flutter **3.41.4**, JDK **17**, and Android SDK **36**. Run these commands from the repository root.
 
 ```sh
 flutter pub get
 flutter analyze
 flutter test
-flutter build apk --release --split-per-abi
-cd android
-# Usare JAVA_HOME del proprio JDK 17, se la shell seleziona un JDK diverso.
-./gradlew testDebugUnitTest lintDebug
+flutter build apk --debug
+(cd android && ./gradlew testDebugUnitTest lintDebug)
 ```
 
-APK consigliato per telefoni ARM64: `build/app/outputs/flutter-apk/app-arm64-v8a-release.apk` (circa16.6 MB).
-Sono disponibili anche `app-armeabi-v7a-release.apk` e `app-x86_64-release.apk`
-nella stessa cartella. La build ottimizzata è firmata con chiave di sviluppo. Per distribuzione
-pubblica configurare una propria chiave release; non conservare segreti nel repo.
-Il workflow [Android MVP](.github/workflows/android.yml) esegue gli stessi controlli
-ed esporta l'APK come artifact. Il workflow sarà eseguito solo dopo push su GitHub.
-
-## Esito verifiche
-
-9 test Flutter e 17 test JVM superati; analisi Dart senza problemi e lint
-Android senza errori. Dettagli e limiti in [verifiche eseguite](docs/testing.md).
-Le notifiche reali e la radio Bluetooth richiedono ancora un dispositivo.
-
-## Prove necessarie
-
-Seguire la [checklist sulla vettura](docs/vehicle-validation.md). Sono obbligatori
-il confronto dei tre parametri, una rigenerazione completa e prove di perdita
-Bluetooth, riavvio, autoradio contemporanea e un viaggio a schermo spento.
-Non usare le notifiche come motivo per ignorare spie o istruzioni del veicolo.
+The debug APK is at `build/app/outputs/flutter-apk/app-debug.apk`. [GitHub Actions](.github/workflows/android.yml) runs the checks on pushes and pull requests. After a push to `main` passes the checks, Actions publishes a signed APK on GitHub Releases.
